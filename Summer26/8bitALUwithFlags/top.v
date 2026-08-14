@@ -87,6 +87,8 @@ module ALU (
         else begin //Clear carry and overflow if operation is not arithmetic
             statusOut[3] = 0;
             statusOut[2] = 0;
+            
+            result = rawResult;
         end
 
         statusOut[1] = result[7]; //Negative Flag
