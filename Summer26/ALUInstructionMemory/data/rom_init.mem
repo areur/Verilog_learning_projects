@@ -1,0 +1,48 @@
+// rom_init.mem
+// 32 locations, 16-bit word width (4 hex digits per word)
+/* 16 bits per word --> 
+    [15:8] 8-bit immediate operand 
+    [7] Reserved for future expansion
+    [6] 1-bit saturationEna(bled)
+    [5] 1-bit carryIn
+    [4:2] 3-bit opcode (opSelect) 
+    [1:0] 2-bit instruction class (take operand from instruction or registers?)
+        //00 --> use register (top module input) operands
+        //01 --> use immediate operand
+ bit paritioning is inspired by RISC-V Compressed extension
+*/
+
+
+//Example program: Add powers of 2 from 0 to 8, then run through every command
+00000000_0_0_0_000_00     // PC0,  add register (input) operands 
+00000000_0_0_0_000_00     // PC1,  add register (input) operands 
+00000000_0_0_0_000_00     // PC2,  add register (input) operands 
+00000000_0_0_0_000_00     // PC3,  add register (input) operands 
+00000010_0_0_0_000_01     // PC4,  add imm operand: 2
+00000100_0_0_0_000_01     // PC5,  add imm operand: 4
+00001000_0_0_0_000_01     // PC6,  add imm operand: 8
+00000000_0_0_1_000_00     // PC7,  add register (input) operands w/ carry in
+01111100_0_1_0_000_01     // PC8,  add imm operand: 124 w/ saturation
+00000000_0_0_0_001_00     // PC9,  sub register (input) operands 
+00001010_0_0_0_001_01     // PC10, sub imm operand: 10
+10000101_0_1_0_001_01     // PC11, sub imm operand: 133 w/ saturation
+00000000_0_0_0_010_00     // PC12, and register (input) operands 
+00000000_0_0_0_011_00     // PC13, or register (input) operands 
+00000000_0_0_0_100_00     // PC14, xor register (input) operands 
+00000000_0_0_0_101_00     // PC15, ShiftLeft register (input) operands 
+00000000_0_0_0_110_00     // PC16, ShiftRight register (input) operands 
+00001001_0_0_0_111_01     // PC17, Compare imm operand: 9 [expect: 1]
+00000000_0_0_0_111_00     // PC18, Compare register (input) operands [expect: 0]
+00000011_0_0_0_111_01     // PC19, Compare imm operand: 3 [expect: 2]
+00000101_0_0_0_111_01     // PC20, Compare imm operand 5 [expect: 0]
+01000000_0_0_0_111_01     // PC21, Compare imm operand 64 [expect: 1]
+00000001_0_0_0_101_01     // PC22, ShiftLeft imm operand: 1 
+00000010_0_0_0_101_01     // PC23, ShiftLeft imm operand: 2 
+00000011_0_0_0_101_01     // PC24, ShiftLeft imm operand: 3 
+00000100_0_0_0_101_01     // PC25, ShiftLeft imm operand: 4 
+00000101_0_0_0_101_01     // PC26, ShiftLeft imm operand: 5 
+00000101_0_0_0_110_01     // PC27, ShiftRight imm operand: 5
+00000100_0_0_0_110_01     // PC28, ShiftRight imm operand: 4
+00000011_0_0_0_110_01     // PC29, ShiftRight imm operand: 3
+00000010_0_0_0_110_01     // PC30, ShiftRight imm operand: 2
+00000001_0_0_0_110_01     // PC31, ShiftRight imm operand: 1 
