@@ -24,7 +24,6 @@ module uart_tx #(
   localparam STOP_BITS = 4;
 
   //TIMING
-  //localparam CLKS_PER_BIT = (CLOCK_RATE / (BAUD_RATE)) - 1;
   reg [3:0] stateCounter = 3'b0;
 
   //STATE MACHINE VARS
@@ -62,12 +61,9 @@ module uart_tx #(
           out_dataTX <= 0;
           currentState <= SENDING_DATA_BITS;
         end
-        SENDING_DATA_BITS: //NOT FIXED (NOT 1 CYCLE)
+        SENDING_DATA_BITS:
         begin
-          //Left-shift a piece of data out at the next tick
-          currentData_latch <= {currentData_latch[BITS_PER_WORD-2:0],1'b0};
-          //Output the piece of data that's getting shifted out
-          out_dataTX <= currentData_latch[BITS_PER_WORD-1];
+          out_dataTX <= currentData_latch[stateCounter];
 
           //keep track of how many bits have been sent out
           if (stateCounter == BITS_PER_WORD-1) begin
@@ -79,7 +75,7 @@ module uart_tx #(
             stateCounter <= stateCounter + 3'b1;
           end
         end
-        PARITY_BIT: //NOT FIXED (NOT 1 CYCLE)
+        PARITY_BIT: 
         begin
           out_dataTX <= (PARITY == 2) ? ^currentData_latch : ~^currentData_latch;
           //If true: Even parity (first value), if false: Odd parity (second value)
@@ -87,8 +83,12 @@ module uart_tx #(
           stateCounter <= 0;
           currentState <= STOP_BITS;
         end
-        STOP_BITS: // NOT FIXED (NOT 1 CYCLE)
+        STOP_BITS:
         begin
+          //start or continue stop bits
+          out_dataTX <= 1; //in the situation that there is only 1 stop bit,
+                           //driving this at the start prevents the stop bit
+                           //from being lost completely
           if (stateCounter == NUM_STOP_BITS - 1) begin
             //end stop bits
             stateCounter <= 0;
@@ -98,8 +98,6 @@ module uart_tx #(
             currentData_latch <= 0;
           end
           else begin
-            //start or continue stop bits
-            out_dataTX <= 1;
             stateCounter <= stateCounter + 1;
           end
         end

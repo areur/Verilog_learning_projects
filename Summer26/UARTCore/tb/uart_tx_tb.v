@@ -35,9 +35,10 @@ module uart_tx_tb();
     else
     begin
       tclk = ~tclk;
-      tickCounter = tickCounter + 3'b1;
-      t_tx_tick = 1'b0;
-      if (tickCounter >= 3'd5)
+      if (tclk)
+        tickCounter = tickCounter + 3'b1;
+
+      if (tickCounter >= 3'd2)
       begin
         t_tx_tick = 1'b1;
         tickCounter = 3'b0;
