@@ -63,6 +63,7 @@ module uart_tx #(
         end
         SENDING_DATA_BITS:
         begin
+          //send data using array position, starts with LSB (right-most)
           out_dataTX <= currentData_latch[stateCounter];
 
           //keep track of how many bits have been sent out
