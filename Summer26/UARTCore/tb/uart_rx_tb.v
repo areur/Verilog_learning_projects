@@ -11,7 +11,6 @@ module uart_rx_tb();
   wire [1:0] rx_flags;
   wire t_rx_valid;
   uart_rx #(
-            .BAUD_RATE(9_600),
             .BITS_PER_WORD(BITS_PER_WORD),
             .PARITY(2), //0 - Off, 1 - Odd Parity, 2 - Even Parity
             .NUM_STOP_BITS(NUM_STOP_BITS)

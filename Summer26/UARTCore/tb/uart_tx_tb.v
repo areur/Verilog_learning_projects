@@ -8,7 +8,6 @@ module uart_tx_tb();
   reg [BITS_PER_WORD-1:0] tx_input_data;
   wire t_tx_on, tx_output_data;
   uart_tx #(
-            .BAUD_RATE(9_600),
             .BITS_PER_WORD(BITS_PER_WORD),
             .PARITY(2), //0 - Off, 1 - Odd Parity, 2 - Even Parity
             .NUM_STOP_BITS(2)
