@@ -1,1 +1,6 @@
 sim/
+*.xml
+__pycache__/
+.pytest_cache/
+venv/
+reference_code/
