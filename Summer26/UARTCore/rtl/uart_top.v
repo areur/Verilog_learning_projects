@@ -17,6 +17,7 @@ module uart_top #(
     input wire tx_data_ready,
     //NOTE: Vivado (but primarily Verilog-2001) require a module output defined by a submodule to be "output wire"
     output wire tx_busy_flag,
+    output wire tx_full_flag,
 
     input wire rx_enable,
     output wire [BITS_PER_WORD-1:0] rx_data,
@@ -56,6 +57,7 @@ module uart_top #(
             .tx_tick(tx_tick),
             .in_parallel_Data(tx_data),
             .TX_VALID(tx_data_ready),
+            .TX_FULL(tx_full_flag),
             .TX_ACTIVE(tx_busy_flag),
             .out_dataTX(serial_data)
           );

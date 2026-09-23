@@ -58,7 +58,11 @@ module uart_rx #(
     else
     begin
       if (currentState == IDLE)
+      begin
         last_InValue <= in_dataRX;
+        RX_VALID <= 0;
+      end  
+        
       if (last_InValue & ~in_dataRX) //negative edge detector: 1 --> 0
       begin
         currentState <= START_BIT;
@@ -67,128 +71,130 @@ module uart_rx #(
         bitsCounted <= {widthReq{1'b0}};
 
         errors <= 0;
-        RX_VALID <= 0;
+        //RX_VALID <= 0;
       end
       else if (rx_tick)
       begin
-        begin
-          //Theory: RX needs to find midpoint of each bit
-          //rx_tick runs x16 faster than tx_tick,
-          //so 8 counts of rx_tick is the midpoint
-          case (currentState)
-            //IDLE:
-            START_BIT:
-            begin
-              if (stateCounter == 4'd7)
-              begin //middle of bit, sample
-                if (~in_dataRX)
-                begin
-                  //Valid start bit
-                  out_parallelData <= 0;
-                  currentState <= RECEIVING_DATA_BITS;
-                end
-                else
-                begin //frame error
-                  errors[0] <= 1'b1;
-                  currentState <= IDLE;
-                  out_parallelData <= {BITS_PER_WORD{1'b0}};
-                  last_InValue <= 1'b1;
-                end
-                stateCounter <= 4'b0;
+        //Theory: RX needs to find midpoint of each bit
+        //rx_tick runs x16 faster than tx_tick,
+        //so 8 counts of rx_tick is the midpoint
+        case (currentState)
+          //IDLE:
+          //begin
+            //RX_VALID <= 0;
+          //end
+          START_BIT:
+          begin
+            if (stateCounter == 4'd7)
+            begin //middle of bit, sample
+              if (~in_dataRX)
+              begin
+                //Valid start bit
+                out_parallelData <= 0;
+                currentState <= RECEIVING_DATA_BITS;
               end
               else
-              begin
-                stateCounter <= stateCounter + 4'b1;
+              begin //frame error
+                errors[0] <= 1'b1;
+                currentState <= IDLE;
+                out_parallelData <= {BITS_PER_WORD{1'b0}};
+                last_InValue <= 1'b1;
               end
+              stateCounter <= 4'b0;
             end
-            RECEIVING_DATA_BITS:
+            else
             begin
-              if (stateCounter == 4'd15) //one complete bit cycle
-              begin //middle of bit, sample
-                //out_parallelData <= {out_parallelData[BITS_PER_WORD-1:1],in_dataRX};
-                //data is sent LSB-->MSB (right to left)
-                out_parallelData[bitsCounted] <= in_dataRX;
+              stateCounter <= stateCounter + 4'b1;
+            end
+          end
+          RECEIVING_DATA_BITS:
+          begin
+            if (stateCounter == 4'd15) //one complete bit cycle
+            begin //middle of bit, sample
+              //out_parallelData <= {out_parallelData[BITS_PER_WORD-1:1],in_dataRX};
+              //data is sent LSB-->MSB (right to left)
+              out_parallelData[bitsCounted] <= in_dataRX;
 
-                stateCounter <= 4'b0;
-                if (bitsCounted == BITS_PER_WORD-1)
-                begin //done reading lets go
-                  currentState <= PARITY ? PARITY_BIT : STOP_BITS;
-                  bitsCounted <= {widthReq{1'b0}};
-                end
-                else
-                begin
-                  bitsCounted <= bitsCounted + 1'b1;
-                end
+              stateCounter <= 4'b0;
+              if (bitsCounted == BITS_PER_WORD-1)
+              begin //done reading lets go
+                currentState <= PARITY ? PARITY_BIT : STOP_BITS;
+                bitsCounted <= {widthReq{1'b0}};
               end
               else
               begin
-                stateCounter <= stateCounter + 4'b1;
+                bitsCounted <= bitsCounted + 1'b1;
               end
             end
-            PARITY_BIT:
+            else
             begin
-              if (stateCounter == 4'd15)
-              begin //middle of bit, sample
-                if (in_dataRX != expectedParity)
-                begin
-                  errors[1] <= 1'b1;
-                end
-                stateCounter <= 4'b0;
-                currentState <= STOP_BITS;
-              end
-              else
+              stateCounter <= stateCounter + 4'b1;
+            end
+          end
+          PARITY_BIT:
+          begin
+            if (stateCounter == 4'd15)
+            begin //middle of bit, sample
+              if (in_dataRX != expectedParity)
               begin
-                stateCounter <= stateCounter + 4'b1;
+                errors[1] <= 1'b1;
               end
+              stateCounter <= 4'b0;
+              currentState <= STOP_BITS;
             end
-            STOP_BITS:
+            else
             begin
-              // if (bitsCounted == NUM_STOP_BITS-1)
-              // begin //we're done here
-              //   currentState <= IDLE;
-              //   bitsCounted <= 0;
-              //   RX_VALID <= 1;
-              // end
-              // else
-              if (stateCounter == 4'd15)
-              begin //middle of bit, sample
-                if (in_dataRX)
-                begin //stop bit received
-                  if (bitsCounted == NUM_STOP_BITS-1)
-                  begin
-                    //bit found was the last stop bit
-                    //we're done here
-                    currentState <= IDLE;
-                    stateCounter <= 4'b0;
-                    bitsCounted <= {widthReq{1'b0}};
-                    last_InValue = 1'b1;
-                    RX_VALID <= 1'b1;
-                  end
-                  else
-                    bitsCounted <= bitsCounted + 1'b1;
-                end
-                else
-                begin //frame error, shouldn't be low if the transmission is over
-                  errors[0] <= 1'b1;
+              stateCounter <= stateCounter + 4'b1;
+            end
+          end
+          STOP_BITS:
+          begin
+            // if (bitsCounted == NUM_STOP_BITS-1)
+            // begin //we're done here
+            //   currentState <= IDLE;
+            //   bitsCounted <= 0;
+            //   RX_VALID <= 1;
+            // end
+            // else
+            if (stateCounter == 4'd15)
+            begin //middle of bit, sample
+              if (in_dataRX)
+              begin //stop bit received
+                if (bitsCounted == NUM_STOP_BITS-1)
+                begin
+                  //bit found was the last stop bit
+                  //we're done here
+                  currentState <= IDLE;
                   stateCounter <= 4'b0;
                   bitsCounted <= {widthReq{1'b0}};
-                  currentState <= IDLE;
-                  last_InValue <= 1'b0;
+                  last_InValue <= 1'b1;
+                  RX_VALID <= 1'b1;
                 end
+                else
+                  bitsCounted <= bitsCounted + 1'b1;
               end
               else
-              begin
-                stateCounter <= stateCounter + 4'b1;
+              begin //frame error, shouldn't be low if the transmission is over
+                errors[0] <= 1'b1;
+                stateCounter <= 4'b0;
+                bitsCounted <= {widthReq{1'b0}};
+                currentState <= IDLE;
+                last_InValue <= 1'b0;
               end
             end
-            default:
+            else
             begin
-              currentState <= IDLE;
-              stateCounter <= 4'b0;
-              bitsCounted <= {widthReq{1'b0}};
+              stateCounter <= stateCounter + 4'b1;
             end
-          endcase
-        end
+          end
+          default:
+          begin
+            currentState <= IDLE;
+            stateCounter <= 4'b0;
+            RX_VALID <= 0;
+            bitsCounted <= {widthReq{1'b0}};
+          end
+        endcase
       end
     end
   end

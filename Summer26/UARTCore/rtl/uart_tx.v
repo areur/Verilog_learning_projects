@@ -12,6 +12,7 @@ module uart_tx #(
     input wire TX_VALID, //HIGH when TX has new valid data to transmit
     
     output reg TX_ACTIVE, //HIGH when TX is working
+    output wire TX_FULL, //HIGH when tx_request_data is full
     output reg out_dataTX //This is the single line of the data being sent out
     
   );
@@ -26,7 +27,7 @@ module uart_tx #(
   //TIMING
   localparam MAX_COUNT = (BITS_PER_WORD > NUM_STOP_BITS) ? BITS_PER_WORD : NUM_STOP_BITS;
   localparam counterWidth = $clog2(MAX_COUNT);
-  reg [counterWidth-1:0] stateCounter = {MAX_COUNT{1'b0}};
+  reg [counterWidth-1:0] stateCounter = {counterWidth{1'b0}};
 
   //STATE MACHINE VARS
   reg [2:0] currentState = IDLE;
@@ -35,21 +36,26 @@ module uart_tx #(
   //Sticky Request Latch
   //At large baud rates, the FSM only ends up reading TX_VALID after a significant number of clock cycles
   //However outside modules will usually not hold TX_VALID high that long
-  //So this latch goes high when TX_VALID does but cannot be read, then releases it when the transmitter can use it
+  //So this latch goes high when TX_VALID goes high but the incoming frame cannot be read, then goes low when the transmitter can use it
+  //Now I just feed all frames through the latch
   reg tx_request = 1'b0;
-  reg [BITS_PER_WORD-1:0] tx_request_data = {BITS_PER_WORD{1'b0}};
+  reg [BITS_PER_WORD-1:0] tx_request_data = {BITS_PER_WORD{1'b0}}; //Holds one word to be transmitted later
+  assign TX_FULL = tx_request;
+  wire tx_consume = (tx_tick && (currentState == IDLE) && tx_request); //indicates the clock cycle where the request will be used
 
   always @(posedge clk) begin
     if (rst) begin
       tx_request <= 1'b0;
       tx_request_data <= {BITS_PER_WORD{1'b0}};
     end    
-    else if (TX_VALID && !tx_request && TX_ACTIVE) begin //store new request
-      tx_request <= 1'b1;
-      tx_request_data <= in_parallel_Data; //freezeframe data from the time it was requested
-    end
-    else if (tx_tick && (currentState == IDLE) && tx_request) begin
-      tx_request <= 1'b0; // FSM will use up the request within this tick
+    else begin
+      if (tx_consume)
+        tx_request <= 1'b0; // FSM uses the buffered word this cycle
+      if (TX_VALID && (!tx_request || tx_consume)) begin // capture ALWAYS, busy or not
+        //"|| tx_consume" allows a new request to be taken in the same cycle we know the current one will be used
+        tx_request <= 1'b1;
+        tx_request_data <= in_parallel_Data;
+      end
     end
   end
 
@@ -69,12 +75,12 @@ module uart_tx #(
         IDLE:
         begin
           out_dataTX <= 1'b1; //manually hold high, ensuring line appears "inactive"
-          if (TX_VALID) begin
+          if (tx_request) begin
             currentState <= START_BIT;
             TX_ACTIVE <= 1'b1;
 
-            //latch data to work on right now
-            currentData_latch <= (tx_request == 1'b1) ? tx_request_data : in_parallel_Data;
+            //latch data to work on
+            currentData_latch <= tx_request_data;
           end
           else begin
             TX_ACTIVE <= 0;

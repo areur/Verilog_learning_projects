@@ -2,9 +2,15 @@
 
 module uart_overall_tb();
 
+  /* PSUEDO-CODE
+    Variables declarations and whatnot
+    Top module declaration
+    clock initalization
+    initial values
+  */
   localparam BITS_PER_WORD = 8;
   localparam NUM_STOP_BITS = 2;
-  localparam CLOCK_RATE = 1_000_000;
+  localparam CLOCK_RATE = 100_000_000;
 
   reg tclk = 0; 
   reg trst = 0;
@@ -12,7 +18,7 @@ module uart_overall_tb();
   reg [1:0] t_baud_sel = 2'b10;
 
   reg t_tx_ready, t_rx_on;
-  wire t_tx_busy, t_rx_output_ready;
+  wire t_tx_busy, t_tx_full, t_rx_output_ready;
   reg [BITS_PER_WORD-1:0] t_tx_data;
 
   wire [BITS_PER_WORD-1:0] t_rx_data;
@@ -34,6 +40,7 @@ module uart_overall_tb();
              .tx_data(t_tx_data),
              .tx_data_ready(t_tx_ready),
              .tx_busy_flag(t_tx_busy),
+             .tx_full_flag(t_tx_full),
 
              .rx_enable(t_rx_on),
              .rx_data(t_rx_data),
@@ -58,6 +65,7 @@ module uart_overall_tb();
   end
 
   integer i;
+  always @(posedge tclk) if (t_rx_output_ready) $display("%0t: received %h  errors=%b", $time, t_rx_data, t_rx_error_flags);
 
   initial
   begin
@@ -65,7 +73,7 @@ module uart_overall_tb();
     $dumpvars(0, uart_overall_tb); // Dumps all signals in this module and submodules
 
     t_rx_on = 1;
-    t_tx_ready = 1;
+    t_tx_ready = 0;
     t_rxd = 0; //unused but i dont want to leave any high-impedance nets
 
     tclk = 0;
@@ -75,13 +83,18 @@ module uart_overall_tb();
 
     for (i=0; i<5; i=i+1)
     begin
-      t_tx_data = $urandom & {BITS_PER_WORD{1'd1}};
+      wait(t_tx_full == 1'b0);   // only offer a word when the holding register is free
+      @(negedge tclk);           // drive stimulus away from the active clock edge
+      t_tx_data  = $urandom & {BITS_PER_WORD{1'd1}};
       t_tx_ready = 1'b1;
-      wait(t_tx_busy == 1'b1); //main bug was that this value was not held long enough for tx_tick to activate, now held dynamically
+      @(negedge tclk);           // exactly one clock-wide strobe
       t_tx_ready = 1'b0;
-      #200;
+      $display("%0t: queued %h", $time, t_tx_data);
+    #200;
     end
-    #500;
+    wait(t_tx_full == 1'b0);
+    wait(t_tx_busy == 1'b0);
+    #2000;
     $finish;
   end
 endmodule
