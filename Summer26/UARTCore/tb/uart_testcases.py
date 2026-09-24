@@ -8,7 +8,7 @@ from cocotb.queue import Queue
 async def test_hello_world(dut):
     cocotb.log.info("Yooo")
 
-@cocotb.test()
+@cocotb.test(timeout_time=25, timeout_unit="ms")#timeout time is in simulated time not real time
 async def single_loopback_test(dut):
     #TERMINOLOGY
     """
@@ -45,7 +45,7 @@ async def single_loopback_test(dut):
     #start clock
     cocotb.start_soon(#schedules a coroutine thread (task?) to be run concurrently w/ the rest of the test
         Clock(dut.clk, 10, "ns").start()#50% duty cycle clock signal
-        #1ns off, 1ns on --> 100 MHz
+        #10ns off, 10ns on --> 100 MHz
     )
 
     # Initialize input signals
@@ -65,30 +65,33 @@ async def single_loopback_test(dut):
     dut._log.info("Initial Reset done")
 
     scoreboard = Queue()
-    numberOfPackets = 10
+    numberOfPackets = 200
     packetsRecv = []
 
     # both of these tasks are set to run at the same time
     tx_task = cocotb.start_soon(tx_scoreboard(dut, scoreboard, numberOfPackets))
-    rx_task = cocotb.start_soon(rx_monitor(dut, scoreboard, numberOfPackets,packetsRecv))
+    rx_task = cocotb.start_soon(rx_monitor(dut, scoreboard, numberOfPackets))
+    frame_counter = cocotb.start_soon(count_frames(dut,packetsRecv,numberOfPackets))
 
     # system waits for tx to end then waits for rx
     await tx_task
     await rx_task    
+    # await frame_counter
 
     # Make sure no extra (duplicate) frames show up afterwards
     await Timer(200, unit="us")
     assert len(packetsRecv) == numberOfPackets, f"Got {packetsRecv} frames, expected {numberOfPackets}"
-    
+
+    # Error injection
 
 
 ### OTHER CO-ROUTINES
 async def tx_scoreboard(dut,scoreboard,numPackets):
     for index in range(numPackets): #Packet Gen Loop
+        if (dut.tx_full_flag.value == 1):
+            await FallingEdge(dut.tx_full_flag) #wait for request slot to be free
         await FallingEdge(dut.clk)
-        while dut.tx_full_flag.value == 1: #wait for request slot to be free
-                await FallingEdge(dut.clk)
-            
+        
         #generate data,tell system its ready
         current_tx_data = random.randint(0,255)
         dut.tx_data.value = current_tx_data
@@ -101,15 +104,18 @@ async def tx_scoreboard(dut,scoreboard,numPackets):
         assert dut.tx_full_flag.value == 1, f"Why did it not enter the request queue?, {dut.tx_full_flag.value}"
         dut.tx_data_ready.value = 0
 
-async def rx_monitor(dut,scoreboard,numPackets,packetsRev):
+    dut._log.info(f"[TX_SCOREBOARD]: Summary, {numPackets} sent")
+
+async def rx_monitor(dut,scoreboard,numPackets):
     #wait for rx data to be ready for each packet
+    recvPackets = 0
     for index in range(numPackets):
         while int(dut.rx_data_ready.value) != 1: # wait for data to be ready
             await RisingEdge(dut.clk)
         expected_packet = await scoreboard.get()
-        packetsRev.append(expected_packet)
         dut._log.info(f"[PACKET #{index}] REMOVED FROM SCOREBOARD: {str(bin(expected_packet))}, raw received: {str(dut.rx_data.value)}")
         received_packet = dut.rx_data.value
+        recvPackets += 1
 
         assert received_packet == expected_packet, (
             f"[PACKET #{index}] Data Mismatch! Sent: {expected_packet:#b}, Got: {received_packet:#b}"
@@ -119,17 +125,25 @@ async def rx_monitor(dut,scoreboard,numPackets,packetsRev):
         #   # --> tells system to include format specificer in the front (0b for binary, 0x for hexa)
         #   x --> tells system to convert to hexadecimal
         assert dut.rx_errors.value == 0, (
-            f"[PACKET #{index}] RX Error Flagged: {dut.rx_errors.value.binstr}"
+            f"[PACKET #{index}] RX Error Flagged: {str(dut.rx_errors.value)}"
         )
 
         if index >= (numPackets-1): #if this is the last packet just leave bruh
             break
 
-        dut._log.info(f"rx_data_ready={int(dut.rx_data_ready.value)}")
-        await ReadOnly()
-        dut._log.info(f"rx_data_ready={int(dut.rx_data_ready.value)}")
-        while int(dut.rx_data_ready.value) == 1: # wait for data to not be ready (meaning another packet has been received)
-            # In rx_monitor, add logging:
-            dut._log.info(f"Index {index}: rx_data_ready={int(dut.rx_data_ready.value)}, state=?")
-            await RisingEdge(dut.clk)
+        #dut._log.info(f"rx_data_ready={int(dut.rx_data_ready.value)}")
+        await FallingEdge(dut.rx_data_ready)
+        await ReadOnly() #wait for register values to actually update
+        #dut._log.info(f"rx_data_ready={int(dut.rx_data_ready.value)}")
+
+    dut._log.info(f"[RX_MONITOR]: Summary, {recvPackets} received")
+
+async def count_frames(dut,packetsRecv,numPackets):
+    #count every frame received by the UART
+    while True:
+        # if len(packetsRecv) >= numPackets:
+        #     break
+        # else:
+            await FallingEdge(dut.rx_data_ready)
             await ReadOnly()
+            packetsRecv.append(dut.rx_data.value)
